@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Owner</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;700&family=Figtree:wght@400;600;700&display=swap"><link rel="stylesheet" href="css/style.css"></head><body><header class="top" id="top"></header>
+<main><section class="s"><div class="wrap">
+<div id="login"><h1>Owner login</h1><form class="f" id="lf"><label>Email<input name="email" type="email" required autocomplete="username"></label><label>Password<input name="password" type="password" required autocomplete="current-password"></label><button class="btn red">Log in</button><div class="out"></div></form></div>
+<div id="dash" class="hide"><div style="display:flex;justify-content:space-between;align-items:center"><h1>Dashboard</h1><button class="btn sm red" id="out">Log out</button></div>
+<div class="tabs"><button data-t="q" class="on">Requests</button><button data-t="l">Listings</button></div>
+<div id="q" class="scroll"></div>
+<div id="l" class="hide"><form class="f" id="nf"><h2>Post a listing</h2><label>Title<input name="title" required></label><label>Location<input name="location" required></label><label>Price (USD)<input name="price" type="number" min="0" required></label>
+<label>Beds<input name="beds" type="number" min="0" value="3"></label><label>Baths<input name="baths" type="number" min="0" value="2"></label><label>Square feet<input name="sqft" type="number" min="0"></label>
+<label>Description<textarea name="description" rows="3"></textarea></label><label>Photo<input name="photo" type="file" accept="image/*"></label><button class="btn red">Publish listing</button><div class="out"></div></form>
+<h2 style="margin-top:40px">Your listings</h2><div class="scroll" id="ll"></div></div></div></div></section></main>
+<footer class="foot" id="foot"></footer><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="js/config.js"></script><script src="js/app.js"></script>
+<script>
+chrome('');
+const $=id=>document.getElementById(id);
+async function isAdmin(){const{data:{user}}=await sb.auth.getUser();if(!user)return false;const{data}=await sb.from('admins').select('user_id').eq('user_id',user.id).maybeSingle();return !!data}
+async function show(){if(await isAdmin()){$('login').classList.add('hide');$('dash').classList.remove('hide');loadQ();loadL()}else{$('login').classList.remove('hide');$('dash').classList.add('hide')}}
+$('lf').addEventListener('submit',async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),o=e.target.querySelector('.out');
+const{error}=await sb.auth.signInWithPassword(v);if(error){o.className='out msg err';o.textContent='Wrong email or password.';return}
+if(!(await isAdmin())){await sb.auth.signOut();o.className='out msg err';o.textContent='This account is not the owner.';return}o.textContent='';show()});
+$('out').onclick=async()=>{await sb.auth.signOut();show()};
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$('q').classList.toggle('hide',b.dataset.t!=='q');$('l').classList.toggle('hide',b.dataset.t!=='l')});
+async function loadQ(){const{data,error}=await sb.from('quotes').select('*,listings(title)').order('created_at',{ascending:false});if(error){$('q').innerHTML='<p class="msg err">Could not load requests.</p>';return}
+$('q').innerHTML=data.length?'<table class="tbl"><tr><th>Date</th><th>From</th><th>House</th><th>Message</th><th>Status</th><th></th></tr>'+data.map(r=>'<tr><td>'+new Date(r.created_at).toLocaleDateString()+'</td><td><b>'+esc(r.name)+'</b><br><a href="mailto:'+esc(r.email)+'">'+esc(r.email)+'</a><br>'+esc(r.phone||'')+'</td><td><span class="badge '+(r.type==='quote'?'':'c')+'">'+(r.type==='quote'?'Quote':'Contact')+'</span><br>'+esc(r.listings?.title||'')+'</td><td>'+esc(r.message||'')+'</td><td><select data-id="'+r.id+'" class="st">'+['new','contacted','closed'].map(s=>'<option '+(s===r.status?'selected':'')+'>'+s+'</option>').join('')+'</select></td><td><button class="btn sm red" data-del="'+r.id+'">Delete</button></td></tr>').join('')+'</table>':'<p>No requests yet.</p>';
+document.querySelectorAll('.st').forEach(s=>s.onchange=()=>sb.from('quotes').update({status:s.value}).eq('id',s.dataset.id));
+document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this request?')){await sb.from('quotes').delete().eq('id',b.dataset.del);loadQ()}})}
+async function loadL(){const{data}=await sb.from('listings').select('*').order('created_at',{ascending:false});
+$('ll').innerHTML=(data||[]).length?'<table class="tbl"><tr><th>Title</th><th>Price</th><th>Status</th><th></th></tr>'+data.map(l=>'<tr><td>'+esc(l.title)+'<br><small>'+esc(l.location)+'</small></td><td>'+money(l.price)+'</td><td>'+esc(l.status)+'</td><td><button class="btn sm" data-tg="'+l.id+'" data-s="'+l.status+'">Mark '+(l.status==='sold'?'available':'sold')+'</button> <button class="btn sm red" data-rm="'+l.id+'">Delete</button></td></tr>').join('')+'</table>':'<p>No listings yet.</p>';
+document.querySelectorAll('[data-tg]').forEach(b=>b.onclick=async()=>{await sb.from('listings').update({status:b.dataset.s==='sold'?'available':'sold'}).eq('id',b.dataset.tg);loadL()});
+document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this listing?')){await sb.from('listings').delete().eq('id',b.dataset.rm);loadL()}})}
+$('nf').addEventListener('submit',async e=>{e.preventDefault();const f=e.target,o=f.querySelector('.out'),v=Object.fromEntries(new FormData(f)),file=f.photo.files[0];let image_url=null;
+if(file){const path=Date.now()+'-'+file.name.replace(/[^\w.-]/g,'_');const{error:ue}=await sb.storage.from('listing-images').upload(path,file);if(ue){o.className='out msg err';o.textContent='Photo upload failed.';return}image_url=sb.storage.from('listing-images').getPublicUrl(path).data.publicUrl}
+const{error}=await sb.from('listings').insert({title:v.title,location:v.location,price:+v.price,beds:+v.beds||0,baths:+v.baths||0,sqft:+v.sqft||0,description:v.description,image_url});
+if(error){o.className='out msg err';o.textContent='Could not publish: '+error.message;return}f.reset();o.className='out msg ok';o.textContent='Listing published.';loadL()});
+show();
+</script>
+</body></html>
